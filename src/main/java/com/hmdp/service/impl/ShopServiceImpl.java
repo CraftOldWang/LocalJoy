@@ -12,6 +12,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -55,16 +56,18 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         // 3未命中，根据id查询数据库
         Shop shop = getById(id);
+        long randomOffset = ThreadLocalRandom.current().nextLong(1, 11); // 1~10 分钟
+
 
         // 4不存在， 返回错误
         if (shop == null) {
             // 返回之前先存储空对象
-            stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
+            stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, "", CACHE_NULL_TTL + randomOffset, TimeUnit.MINUTES);
             return Result.fail("商家不存在");
         }
 
         // 5存在， 写入redis
-        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop), CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop), CACHE_SHOP_TTL + randomOffset, TimeUnit.MINUTES);
         // 6返回商户
         return Result.ok(shop);
 
