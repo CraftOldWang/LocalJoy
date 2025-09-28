@@ -7,11 +7,16 @@ import com.hmdp.entity.ShopType;
 import com.hmdp.mapper.ShopTypeMapper;
 import com.hmdp.service.IShopTypeService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import net.sf.jsqlparser.statement.select.MinusOp;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import static com.hmdp.utils.RedisConstants.CACHE_SHOPTYPE_KEY;
+import static com.hmdp.utils.RedisConstants.CACHE_SHOP_TTL;
 
 /**
  * <p>
@@ -34,7 +39,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
     public Result queryAll() {
 
         // 1. 查询缓存
-        String typeListJson = stringRedisTemplate.opsForValue().get("cache:typelist");
+        String typeListJson = stringRedisTemplate.opsForValue().get(CACHE_SHOPTYPE_KEY);
 
 
         // 2.若查到，返回
@@ -52,7 +57,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
         }
 
         // 5. 如果存在，记录到redis
-        stringRedisTemplate.opsForValue().set("cache:typelist", JSONUtil.toJsonStr(typeList));
+        stringRedisTemplate.opsForValue().set(CACHE_SHOPTYPE_KEY, JSONUtil.toJsonStr(typeList), CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
         // 6. 返回
 
