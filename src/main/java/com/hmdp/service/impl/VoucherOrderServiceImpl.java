@@ -9,6 +9,7 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,13 +56,24 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
-        return createVoucherOrder(voucherId);
+
+        Long userId = UserHolder.getUser().getId();
+        // 1. 不想要锁整个方法， 而只想根据 userId 来锁。
+        // 2. 要了解spring事务实现方法，直接用其实会失效。(需要添加依赖、在启动类开启暴露代理对象、最后在这里获取并调用方法)
+        synchronized (userId.toString().intern()) { // 用intern是未来确保每次拿到的是同一个字符串对象
+            // 由于动态代理，调用 实现类方法，事务不会生效(事务是通过代理类实现的....因此要用代理类来调用)
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.createVoucherOrder(voucherId);
+        }
     }
 
     @Transactional
-    public synchronized Result createVoucherOrder(Long voucherId) {
+    @Override
+    public Result createVoucherOrder(Long voucherId) {
         // 6.一人一单(检验，每个用户只能下一个单)
         Long userId = UserHolder.getUser().getId();
+
+
         int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
         if (count > 0) {
             return Result.fail("已经下过单了");
