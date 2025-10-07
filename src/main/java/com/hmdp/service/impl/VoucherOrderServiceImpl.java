@@ -28,8 +28,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Autowired
     private ISeckillVoucherService seckillVoucherService;
-    @Autowired
-    private VoucherOrderMapper voucherOrderMapper;
+
     @Autowired
     private RedisIdWorker redisIdWorker;
 
@@ -57,7 +56,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
-        // 6. 扣库存
+        // 6.一人一单(检验，每个用户只能下一个单)
+        Long userId = UserHolder.getUser().getId();
+        int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+        if (count > 0) {
+            return Result.fail("已经下过单了");
+        }
+
+        // 7. 扣库存
 
 //        boolean success = seckillVoucherService.update()
 //                .setSql("stock= stock - 1")
@@ -75,12 +81,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
 
 
-        // 7. 创建订单 并返回订单id
+        // 8. 创建订单 并返回订单id
         VoucherOrder voucherOrder = new VoucherOrder();
         //
         long orderId = redisIdWorker.nextId("order");
         voucherOrder.setId(orderId);
-        Long userId = UserHolder.getUser().getId();
         voucherOrder.setUserId(userId);
         voucherOrder.setVoucherId(voucherId);
         save(voucherOrder);
