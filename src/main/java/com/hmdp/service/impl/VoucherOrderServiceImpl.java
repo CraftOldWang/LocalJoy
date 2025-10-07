@@ -32,7 +32,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Autowired
     private RedisIdWorker redisIdWorker;
 
-    @Transactional
     @Override
     public Result seckillVoucher(Long voucherId) {
         // 1. 查询优惠券
@@ -56,6 +55,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
+        return createVoucherOrder(voucherId);
+    }
+
+    @Transactional
+    public synchronized Result createVoucherOrder(Long voucherId) {
         // 6.一人一单(检验，每个用户只能下一个单)
         Long userId = UserHolder.getUser().getId();
         int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
