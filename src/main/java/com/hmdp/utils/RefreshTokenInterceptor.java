@@ -22,6 +22,28 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
 
+//        // 测试模式: Authorization 直接是 userId
+//        String authHeader = request.getHeader("Authorization");
+//        if (StrUtil.isNotBlank(authHeader)) {
+//            String userId = authHeader; // 直接当作 userId
+//            String key = RedisConstants.LOGIN_USER_KEY + userId;
+//            Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
+//
+//            // 如果 Redis 中不存在对应用户，直接拒绝
+//            if (userMap.isEmpty()) {
+//                response.setStatus(HttpServletResponse.SC_FORBIDDEN); // 403 禁止访问
+//                response.getWriter().write("非法测试用户: " + userId);
+//                return false; // 不放行
+//            }
+//
+//            // Redis 中存在则继续处理
+//            UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
+//            UserHolder.saveUser(userDTO);
+//            stringRedisTemplate.expire(key, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
+//            return true;
+//        }
+
+
         //1. 从 request header中获取token
         String token = request.getHeader("authorization");
         if (StrUtil.isBlank(token)) {
