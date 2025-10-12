@@ -13,6 +13,7 @@ import com.hmdp.utils.RedisIdWorker;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.Point;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.HashMap;
@@ -22,8 +23,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.CACHE_SHOP_KEY;
+import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
 
 @SpringBootTest
 class HmDianPingApplicationTests {
@@ -89,6 +92,26 @@ class HmDianPingApplicationTests {
             stringRedisTemplate.expire(key, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
         }
         System.out.println("All users preloaded to Redis.");
+    }
+
+    @Test
+    public void loadShopData() {
+        //1. 查询所有店铺信息
+        List<Shop> shopList = shopService.list();
+        //2. 按照typeId，将店铺进行分组
+        Map<Long, List<Shop>> map = shopList.stream().collect(Collectors.groupingBy(Shop::getTypeId));
+        //3. 逐个写入Redis
+        for (Map.Entry<Long, List<Shop>> entry : map.entrySet()) {
+            //3.1 获取类型id
+            Long typeId = entry.getKey();
+            //3.2 获取同类型店铺的集合
+            List<Shop> shops = entry.getValue();
+            String key = SHOP_GEO_KEY + typeId;
+            for (Shop shop : shops) {
+                //3.3 写入redis GEOADD key 经度 纬度 member
+                stringRedisTemplate.opsForGeo().add(key, new Point(shop.getX(), shop.getY()), shop.getId().toString());
+            }
+        }
     }
 
     @Test
