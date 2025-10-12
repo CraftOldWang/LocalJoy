@@ -4,28 +4,35 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.db.sql.Condition;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
+import static com.hmdp.utils.RedisConstants.FEED_KEY;
 
 /**
  * <p>
@@ -42,6 +49,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private IUserService userService;
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+    @Autowired
+    private IFollowService followService;
 
 
     @Override
@@ -119,6 +128,83 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
                 .collect(Collectors.toList());
         return Result.ok(userDTOS);
+    }
+
+    @Override
+    public Result queryBlogOfFollow(Long max, Integer offset) {
+        // 当前user
+        Long userId = UserHolder.getUser().getId();
+
+        // 在zset 根据 max时间戳 和  offset 查询到一些blog放入list中
+        String key = FEED_KEY + userId.toString();
+        Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet()
+                .reverseRangeByScoreWithScores(key, 0, max, offset, 2);
+
+        if (typedTuples == null || typedTuples.isEmpty()) {
+            // 收件箱时空的， 下次查还是默认...
+            return Result.ok();
+        }
+
+        // 排序?
+        // 然后解析, 得到给前端的，用于下次查询的 max 和 offset
+        List<Long> ids = new ArrayList<>(typedTuples.size());
+        long minTime = 0;
+        int os = 1;
+        for (ZSetOperations.TypedTuple<String> tuple : typedTuples) {
+            // blog id 丢到list里
+            ids.add(Long.valueOf(tuple.getValue()));
+            // minTime 、os 的更新
+            long time = tuple.getScore().longValue();
+            if (tuple.getScore() == minTime) {
+                os++;
+            } else {
+                os = 1;
+                minTime = time;
+            }
+        }
+
+
+        // 通过之前从redis里获取的 id们 ， 查询对应的 blog，以及放入user信息、islike信息
+        String idsStr = StrUtil.join(",", ids);
+        List<Blog> blogs = query().in("id", ids).last("ORDER BY FIELD(id," + idsStr + ")").list();
+        for (Blog blog : blogs) {
+            //5.1 查询发布该blog的用户信息
+            queryBlogUser(blog);
+            //5.2 查询当前用户是否给该blog点过赞
+            isBlogLiked(blog);
+        }
+        //6. 封装结果并返回
+        ScrollResult scrollResult = new ScrollResult();
+        scrollResult.setList(blogs);
+        scrollResult.setOffset(os);
+        scrollResult.setMinTime(minTime);
+        return Result.ok(scrollResult);
+    }
+
+    // 收信箱.. 是在redis里的
+    @Override
+    public Result saveBlog(Blog blog) {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        blog.setUserId(user.getId());
+        // 保存探店博文
+        save(blog);
+
+        // 推送给关注这个用户的人
+        LambdaQueryWrapper<Follow> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Follow::getFollowUserId, user.getId()); // where xxxx
+        // 获取当前用户的粉丝
+        List<Follow> followers = followService.list(queryWrapper);
+        for (Follow follower : followers) {
+            // 推送 blog到 他们的 redis收件箱
+            Long userId = follower.getUserId();
+            String key = FEED_KEY + userId.toString();
+            // sortedset   add 时传入 key value score
+            stringRedisTemplate.opsForZSet().add(key, blog.getId().toString(), System.currentTimeMillis());
+        }
+
+        // 返回id
+        return Result.ok(blog.getId());
     }
 
     private void queryBlogUser(Blog blog) {
