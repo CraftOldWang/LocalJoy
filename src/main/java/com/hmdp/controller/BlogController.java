@@ -1,6 +1,7 @@
 package com.hmdp.controller;
 
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
@@ -78,4 +79,17 @@ public class BlogController {
 
         return blogService.queryHotBlog(current);
     }
+
+    // 是https://cyborg2077.github.io/2022/10/22/RedisPractice/#%E5%85%B1%E5%90%8C%E5%85%B3%E6%B3%A8 他写的
+    // 这些CRUD代码没什么提升的
+    @GetMapping("/of/user")
+    public Result queryBlogByUserId(@RequestParam(value = "current", defaultValue = "1") Integer current, @RequestParam("id") Long id) {
+        LambdaQueryWrapper<Blog> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Blog::getUserId, id);
+        Page<Blog> pageInfo = new Page<>(current, SystemConstants.MAX_PAGE_SIZE);
+        blogService.page(pageInfo, queryWrapper);
+        List<Blog> records = pageInfo.getRecords();
+        return Result.ok(records);
+    }
+
 }
