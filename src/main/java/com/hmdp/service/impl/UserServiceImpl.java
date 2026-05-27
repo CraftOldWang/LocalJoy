@@ -3,13 +3,16 @@ package com.hmdp.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
+import com.hmdp.dto.LoginTokenDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
+import com.hmdp.utils.PasswordEncoder;
 import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
@@ -18,8 +21,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -65,48 +68,152 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Override
     public Result login(LoginFormDTO loginForm, HttpSession session) {
+        User user = checkLoginUser(loginForm);
+        if (user == null) {
+            return Result.fail("手机号、验证码或密码错误");
+        }
+
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        String token = UUID.randomUUID().toString();
+        cacheUser(LOGIN_USER_KEY + token, userDTO, LOGIN_USER_TTL, TimeUnit.MINUTES);
+        return Result.ok(token);
+    }
+
+    @Override
+    public Result loginBySession(LoginFormDTO loginForm, HttpSession session) {
+        User user = checkLoginUser(loginForm);
+        if (user == null) {
+            return Result.fail("手机号、验证码或密码错误");
+        }
+
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        session.setAttribute("userId", userDTO.getId());
+        session.setMaxInactiveInterval(Math.toIntExact(TimeUnit.MINUTES.toSeconds(LOGIN_SESSION_TTL)));
+        cacheUser(LOGIN_SESSION_KEY + session.getId(), userDTO, LOGIN_SESSION_TTL, TimeUnit.MINUTES);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("sessionId", session.getId());
+        return Result.ok(data);
+    }
+
+    @Override
+    public Result loginByDoubleToken(LoginFormDTO loginForm) {
+        User user = checkLoginUser(loginForm);
+        if (user == null) {
+            return Result.fail("手机号、验证码或密码错误");
+        }
+
+        return Result.ok(createTokenPair(user));
+    }
+
+    @Override
+    public Result refreshToken(String refreshToken) {
+        refreshToken = parseBearerToken(refreshToken);
+        if (StrUtil.isBlank(refreshToken)) {
+            return Result.fail("refreshToken不能为空");
+        }
+        String refreshKey = LOGIN_REFRESH_TOKEN_KEY + refreshToken;
+        String userId = stringRedisTemplate.opsForValue().get(refreshKey);
+        if (StrUtil.isBlank(userId)) {
+            return Result.fail("refreshToken无效或已过期");
+        }
+        User user = getById(Long.valueOf(userId));
+        if (user == null) {
+            stringRedisTemplate.delete(refreshKey);
+            return Result.fail("用户不存在");
+        }
+        stringRedisTemplate.delete(refreshKey);
+        return Result.ok(createTokenPair(user));
+    }
+
+    @Override
+    public Result logout(HttpServletRequest request) {
+        String accessToken = parseBearerToken(request.getHeader("authorization"));
+        if (StrUtil.isNotBlank(accessToken)) {
+            stringRedisTemplate.delete(LOGIN_USER_KEY + accessToken);
+            stringRedisTemplate.delete(LOGIN_ACCESS_TOKEN_KEY + accessToken);
+        }
+        String refreshToken = parseBearerToken(request.getHeader("refresh-token"));
+        if (StrUtil.isNotBlank(refreshToken)) {
+            stringRedisTemplate.delete(LOGIN_REFRESH_TOKEN_KEY + refreshToken);
+        }
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            stringRedisTemplate.delete(LOGIN_SESSION_KEY + session.getId());
+            session.invalidate();
+        }
+        UserHolder.removeUser();
+        return Result.ok();
+    }
+
+    private User checkLoginUser(LoginFormDTO loginForm) {
         String phone = loginForm.getPhone();
 
         // 校验手机号
         if (RegexUtils.isPhoneInvalid(phone)) {
-            return Result.fail("手机号格式错误");
+            return null;
         }
 
-        // 校验验证码
         String code = loginForm.getCode();
-        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
-        // 之前这里的条件应当是 cacheCode == null 而不是 code == null ... 写错了； 调用equals 或者toString 是需要不为空的
-        if (cacheCode == null || !cacheCode.equals(code)) {
-            return Result.fail("验证码错误");
+        String password = loginForm.getPassword();
+        boolean codeLogin = StrUtil.isNotBlank(code);
+        if (codeLogin) {
+            String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
+            // 之前这里的条件应当是 cacheCode == null 而不是 code == null ... 写错了； 调用equals 或者toString 是需要不为空的
+            if (cacheCode == null || !cacheCode.equals(code)) {
+                return null;
+            }
+        } else if (StrUtil.isBlank(password)) {
+            return null;
         }
-
 
         // 查询用户
         User user = query().eq("phone", phone).one();
 
         // 无则创建
         if (user == null) {
+            if (!codeLogin) {
+                return null;
+            }
             user = createUserWithPhone(phone);
         }
 
-        // 保存用户到redis (token -> 用户信息)
-        // 生成token
-        String token = UUID.randomUUID().toString();
+        if (!codeLogin && !PasswordEncoder.matches(user.getPassword(), password)) {
+            return null;
+        }
+        return user;
+    }
 
-        // 转换成UserDTO
+    private LoginTokenDTO createTokenPair(User user) {
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        String accessToken = UUID.randomUUID().toString();
+        String refreshToken = UUID.randomUUID().toString();
+        cacheUser(LOGIN_ACCESS_TOKEN_KEY + accessToken, userDTO, LOGIN_ACCESS_TOKEN_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(LOGIN_REFRESH_TOKEN_KEY + refreshToken, user.getId().toString(),
+                LOGIN_REFRESH_TOKEN_TTL, TimeUnit.DAYS);
+        return new LoginTokenDTO(accessToken, refreshToken, "Bearer",
+                TimeUnit.MINUTES.toSeconds(LOGIN_ACCESS_TOKEN_TTL));
+    }
 
+    private void cacheUser(String key, UserDTO userDTO, Long ttl, TimeUnit unit) {
         // 转换成按Hash存进去
         Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
                 CopyOptions.create()
                         .setIgnoreNullValue(true)
                         .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString())
         );
-        String tokenKey = LOGIN_USER_KEY + token;
-        stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
-        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.opsForHash().putAll(key, userMap);
+        stringRedisTemplate.expire(key, ttl, unit);
+    }
 
-        return Result.ok(token);
+    private String parseBearerToken(String token) {
+        if (StrUtil.isBlank(token)) {
+            return null;
+        }
+        if (StrUtil.startWithIgnoreCase(token, "Bearer ")) {
+            return token.substring(7);
+        }
+        return token;
     }
 
     @Override

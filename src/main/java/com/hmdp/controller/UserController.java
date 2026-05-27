@@ -2,27 +2,23 @@ package com.hmdp.controller;
 
 
 import cn.hutool.core.bean.BeanUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.hmdp.annotation.RateLimit;
+import com.hmdp.annotation.RateLimitAlgorithm;
+import com.hmdp.annotation.RateLimitScope;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
-import com.hmdp.entity.Blog;
 import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.service.IUserInfoService;
 import com.hmdp.service.IUserService;
-import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
-
-import java.util.List;
-
-import static com.baomidou.mybatisplus.core.toolkit.Wrappers.query;
-
 
 /**
  * <p>
@@ -47,6 +43,8 @@ public class UserController {
     /**
      * 发送手机验证码
      */
+    @RateLimit(name = "send-login-code", algorithm = RateLimitAlgorithm.TOKEN_BUCKET,
+            scopes = {RateLimitScope.IP}, bucketCapacity = 5, refillTokens = 1, refillInterval = 10)
     @PostMapping("code")
     public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
         // 发送短信验证码并保存验证码
@@ -64,15 +62,29 @@ public class UserController {
         return userService.login(loginForm, session);
     }
 
+    @PostMapping("/login/session")
+    public Result loginBySession(@RequestBody LoginFormDTO loginForm, HttpSession session) {
+        return userService.loginBySession(loginForm, session);
+    }
+
+    @PostMapping("/login/token")
+    public Result loginByDoubleToken(@RequestBody LoginFormDTO loginForm) {
+        return userService.loginByDoubleToken(loginForm);
+    }
+
+    @PostMapping("/refresh")
+    public Result refreshToken(@RequestHeader("refresh-token") String refreshToken) {
+        return userService.refreshToken(refreshToken);
+    }
+
     /**
      * 登出功能
      *
      * @return 无
      */
     @PostMapping("/logout")
-    public Result logout() {
-        // TODO 实现登出功能
-        return Result.fail("功能未完成");
+    public Result logout(HttpServletRequest request) {
+        return userService.logout(request);
     }
 
     @GetMapping("/me")

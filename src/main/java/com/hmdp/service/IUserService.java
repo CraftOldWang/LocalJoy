@@ -5,6 +5,7 @@ import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.User;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 
 /**
@@ -20,6 +21,14 @@ public interface IUserService extends IService<User> {
     Result sendCode(String phone, HttpSession session);
 
     Result login(LoginFormDTO loginForm, HttpSession session);
+
+    Result loginBySession(LoginFormDTO loginForm, HttpSession session);
+
+    Result loginByDoubleToken(LoginFormDTO loginForm);
+
+    Result refreshToken(String refreshToken);
+
+    Result logout(HttpServletRequest request);
 
     Result sign();
 

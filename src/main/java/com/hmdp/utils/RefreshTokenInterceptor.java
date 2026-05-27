@@ -10,6 +10,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -45,32 +46,47 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
 
 
         //1. 从 request header中获取token
-        String token = request.getHeader("authorization");
-        if (StrUtil.isBlank(token)) {
+        String token = parseBearerToken(request.getHeader("authorization"));
+        if (StrUtil.isNotBlank(token) && loadUser(RedisConstants.LOGIN_ACCESS_TOKEN_KEY + token, RedisConstants.LOGIN_ACCESS_TOKEN_TTL)) {
             return true;
         }
 
-
-        // 2. 得到redis中的用户
-        String key = RedisConstants.LOGIN_USER_KEY + token;
-        Map<Object, Object> userMap = stringRedisTemplate.opsForHash()
-                .entries(key);
-        // 3. 用户为空
-        if (userMap.isEmpty()) {
+        if (StrUtil.isNotBlank(token) && loadUser(RedisConstants.LOGIN_USER_KEY + token, RedisConstants.LOGIN_USER_TTL)) {
             return true;
         }
-        // 4. 将hash转换成DTO
-        UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
 
-        // 5. 保存用户
-        UserHolder.saveUser(userDTO);
+        HttpSession session = request.getSession(false);
+        if (session != null && loadUser(RedisConstants.LOGIN_SESSION_KEY + session.getId(), RedisConstants.LOGIN_SESSION_TTL)) {
+            session.setMaxInactiveInterval(Math.toIntExact(TimeUnit.MINUTES.toSeconds(RedisConstants.LOGIN_SESSION_TTL)));
+        }
 
-        // 6. 刷新token有效期
-        stringRedisTemplate.expire(key, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
-
-        // 7. 放行
         return true;
     }
 
+    private boolean loadUser(String key, Long ttl) {
+        Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
+        if (userMap.isEmpty()) {
+            return false;
+        }
+        UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
+        UserHolder.saveUser(userDTO);
+        stringRedisTemplate.expire(key, ttl, TimeUnit.MINUTES);
+        return true;
+    }
+
+    private String parseBearerToken(String token) {
+        if (StrUtil.isBlank(token)) {
+            return null;
+        }
+        if (StrUtil.startWithIgnoreCase(token, "Bearer ")) {
+            return token.substring(7);
+        }
+        return token;
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        UserHolder.removeUser();
+    }
 
 }

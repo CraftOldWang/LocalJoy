@@ -5,6 +5,12 @@ public class RedisConstants {
     public static final Long LOGIN_CODE_TTL = 2L;
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 30L;
+    public static final String LOGIN_SESSION_KEY = "login:session:";
+    public static final Long LOGIN_SESSION_TTL = 30L;
+    public static final String LOGIN_ACCESS_TOKEN_KEY = "login:access:";
+    public static final Long LOGIN_ACCESS_TOKEN_TTL = 30L;
+    public static final String LOGIN_REFRESH_TOKEN_KEY = "login:refresh:";
+    public static final Long LOGIN_REFRESH_TOKEN_TTL = 7L;
 
     public static final Long CACHE_NULL_TTL = 2L;
 
@@ -17,6 +23,7 @@ public class RedisConstants {
     public static final Long LOCK_SHOP_TTL = 10L;
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
+    public static final String SECKILL_ORDER_KEY = "seckill:order:";
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";
     public static final String SHOP_GEO_KEY = "shop:geo:";
