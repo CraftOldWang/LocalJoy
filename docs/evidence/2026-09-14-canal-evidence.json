@@ -1,0 +1,10 @@
+{
+  "timestamp": "2026-09-14T14:52:57.9554156+08:00",
+  "productId": 1,
+  "operation": "direct MySQL UPDATE -> Canal -> RocketMQ -> cache invalidation -> HTTP reload",
+  "cachePresentBeforeUpdate": true,
+  "invalidationObserved": true,
+  "updatedValueObserved": true,
+  "observationMsIncludingDockerCommands": 737,
+  "note": "Single local smoke test; includes Docker CLI and polling overhead, not a latency benchmark."
+}

@@ -24,6 +24,14 @@ public class RedisConstants {
 
     public static final String SECKILL_STOCK_KEY = "seckill:stock:";
     public static final String SECKILL_ORDER_KEY = "seckill:order:";
+    public static final String SECKILL_ORDER_CLOSE_KEY = "seckill:order:closed:";
+    public static final String PRODUCT_SECKILL_STOCK_KEY = "seckill:product:stock:";
+    public static final String PRODUCT_SECKILL_BUYER_KEY = "seckill:product:buyer:";
+    public static final String PRODUCT_SECKILL_META_KEY = "seckill:product:meta:";
+    public static final String CACHE_PRODUCT_KEY = "cache:product:";
+    public static final String LOCK_PRODUCT_CACHE_KEY = "lock:cache:product:";
+    public static final String PRODUCT_SECKILL_ORDER_KEY = "seckill:product:order:";
+    public static final String PRODUCT_SECKILL_ORDER_CLOSE_KEY = "seckill:product:order:closed:";
     public static final String BLOG_LIKED_KEY = "blog:liked:";
     public static final String FEED_KEY = "feed:";
     public static final String SHOP_GEO_KEY = "shop:geo:";

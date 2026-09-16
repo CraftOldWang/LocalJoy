@@ -1,0 +1,10 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["frontend/src"],
+  "locale": "zh-CN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Form", "Scrollbar", "Toast", "CRUD"],
+  "requiredCommands": ["check", "test", "build"],
+  "commands": {"check": "npm run check --prefix ./frontend", "test": "npm test --prefix ./frontend", "build": "npm run build --prefix ./frontend"},
+  "evidence": {"crudFullFlow": "docs/frontend-acceptance.md", "failurePaths": "frontend/scripts/check.mjs"}
+}

@@ -31,3 +31,15 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local runtime and frontend ###
+.runtime/
+node_modules/
+output/playwright/
+.playwright-cli/
+.obsidian/
+.env
+.env.*
+!.env.example
+premium-audit.json
+frontend/dist/

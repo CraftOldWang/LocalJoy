@@ -1,0 +1,27 @@
+{
+  "operation" : "single-thread warm product metadata service query; same product; alternating cache/DB; excludes HTTP",
+  "java" : "1.8.0_342",
+  "processors" : 32,
+  "rounds" : [ {
+    "round" : 1,
+    "readsPerPath" : 500,
+    "cacheMeanMs" : 1.2827318,
+    "databaseMeanMs" : 1.2500216000000002,
+    "cacheP95Ms" : 1.6625,
+    "databaseP95Ms" : 1.6213
+  }, {
+    "round" : 2,
+    "readsPerPath" : 500,
+    "cacheMeanMs" : 1.1018774,
+    "databaseMeanMs" : 1.1315578,
+    "cacheP95Ms" : 1.3353,
+    "databaseP95Ms" : 1.4075
+  }, {
+    "round" : 3,
+    "readsPerPath" : 500,
+    "cacheMeanMs" : 1.0688474,
+    "databaseMeanMs" : 1.1062388,
+    "cacheP95Ms" : 1.2658,
+    "databaseP95Ms" : 1.3585
+  } ]
+}

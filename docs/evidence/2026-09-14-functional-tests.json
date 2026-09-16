@@ -1,0 +1,75 @@
+{
+  "date": "2026-09-14",
+  "suite": "ResumeEvidenceTest",
+  "tests": 16,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 2,
+  "note": "14 functional tests passed in final run. Opt-in real MQ and cache measurements ran separately; see adjacent evidence JSON.",
+  "cases": [
+    {
+      "name": "activityTimeAndMissingMetadataFailClosed",
+      "status": "passed"
+    },
+    {
+      "name": "concurrentAdmissionsAndDuplicateConsumptionNeverOversell",
+      "status": "passed"
+    },
+    {
+      "name": "invalidationWaitsForInFlightFillThenRemovesStaleValue",
+      "status": "passed"
+    },
+    {
+      "name": "canalInvalidationCoversUpdatesDeletesAndDuplicateEvents",
+      "status": "passed"
+    },
+    {
+      "name": "slidingWindowScopesAreIndependentAndCannotSpoofIp",
+      "status": "passed"
+    },
+    {
+      "name": "realBrokerRetriesDeliveryAndDelaysCloseThenMeasuresAcceptedOrders",
+      "status": "skipped-opt-in"
+    },
+    {
+      "name": "delaySendFailureRetriesAfterCommitWithoutSecondStockDeduction",
+      "status": "passed"
+    },
+    {
+      "name": "databaseRejectionCompensatesOnlyOnce",
+      "status": "passed"
+    },
+    {
+      "name": "ambiguousSendAndLateMessageCannotConsumeReplacedReservation",
+      "status": "passed"
+    },
+    {
+      "name": "paymentIsOwnedIdempotentAndCannotRacePastDeadline",
+      "status": "passed"
+    },
+    {
+      "name": "databaseUniqueConstraintRejectsAnotherActiveOrder",
+      "status": "passed"
+    },
+    {
+      "name": "hotProductCacheAndNullCacheAvoidRepeatedDatabaseLoads",
+      "status": "passed"
+    },
+    {
+      "name": "measureWarmProductReadsAgainstDirectDatabase",
+      "status": "skipped-opt-in"
+    },
+    {
+      "name": "repeatedCloseAndLateReplayDoNotUndoRepurchase",
+      "status": "passed"
+    },
+    {
+      "name": "canalFailuresPropagateForMqRetryAndForeignSchemasAreIgnored",
+      "status": "passed"
+    },
+    {
+      "name": "earlyDelayCannotCloseOrder",
+      "status": "passed"
+    }
+  ]
+}

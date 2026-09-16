@@ -1,0 +1,8 @@
+{
+  "startedAt": "2026-09-14T16:22:41.7558733+08:00",
+  "powerScheme": "电源方案 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (平衡)",
+  "userReportedEarlierPowerSaving": true,
+  "earlierPowerStateIndependentlyRecorded": false,
+  "iterations": 3,
+  "note": "Same test code and parameters as previous results; power scheme is not a complete record of Windows/vendor energy mode."
+}

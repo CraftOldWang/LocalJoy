@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "趣享生活（hm-dianping）项目架构",
+    "locale": "zh-CN",
+    "output": "hmdp-project.architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "request_spine",
+        "label": "同步请求主干",
+        "focus": ["client", "request_guard", "mvc_api", "domain_services", "redis", "mysql"],
+        "note": "从客户端进入 Spring MVC，经身份恢复与限流后访问业务状态。"
+      },
+      {
+        "id": "seckill_async",
+        "label": "秒杀异步落单",
+        "focus": ["mvc_api", "domain_services", "redis", "rocketmq", "mysql"],
+        "note": "Lua 预扣减后同步投递消息，消费者在事务内落单并安排延时关单。"
+      },
+      {
+        "id": "cache_consistency",
+        "label": "缓存一致性",
+        "focus": ["domain_services", "mysql", "canal", "rocketmq", "redis"],
+        "note": "MySQL ROW binlog 经 Canal 和 RocketMQ 驱动商户缓存及 GEO 索引失效。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Web / API 客户端",
+      "sublabel": "Authorization 或 Session",
+      "pos": [40, 300],
+      "size": [150, 72]
+    },
+    {
+      "id": "request_guard",
+      "type": "security",
+      "label": "身份恢复与限流",
+      "sublabel": "Interceptor + AOP + Redis Lua",
+      "pos": [260, 300],
+      "size": [170, 76]
+    },
+    {
+      "id": "mvc_api",
+      "type": "backend",
+      "label": "Spring MVC API",
+      "sublabel": "Controllers · hmdp :8081",
+      "pos": [500, 300],
+      "size": [160, 76]
+    },
+    {
+      "id": "domain_services",
+      "type": "backend",
+      "label": "业务服务层",
+      "pos": [780, 300],
+      "size": [200, 82],
+      "tag": "含 MQ Listener"
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis 6.2",
+      "sublabel": "缓存 / Token / Feed / GEO / 库存",
+      "pos": [1080, 120],
+      "size": [170, 80],
+      "tag": "Spring Redis :12379"
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL 5.7",
+      "sublabel": "业务事实与订单状态",
+      "pos": [1080, 300],
+      "size": [170, 80],
+      "tag": "ROW binlog · :12306"
+    },
+    {
+      "id": "rocketmq",
+      "type": "messagebus",
+      "label": "RocketMQ 4.x",
+      "sublabel": "订单 / 延时关单 / hmdp-canal",
+      "pos": [860, 500],
+      "size": [170, 82],
+      "tag": "NameServer :9876"
+    },
+    {
+      "id": "canal",
+      "type": "external",
+      "label": "Canal Server 1.1.7",
+      "sublabel": "tb_shop / tb_shop_type",
+      "pos": [1080, 500],
+      "size": [170, 82],
+      "tag": "flatMessage"
+    }
+  ],
+  "connections": [
+    { "id": "client_request", "from": "client", "to": "request_guard", "label": "HTTP JSON", "variant": "emphasis", "labelAt": [225, 296] },
+    { "id": "guard_to_api", "from": "request_guard", "to": "mvc_api", "label": "用户上下文", "variant": "security", "labelAt": [465, 296] },
+    { "id": "api_to_services", "from": "mvc_api", "to": "domain_services", "label": "业务调用", "variant": "emphasis" },
+    { "id": "services_to_redis", "from": "domain_services", "to": "redis", "label": "Cache / Lua / Lock", "variant": "emphasis" },
+    { "id": "services_to_mysql", "from": "domain_services", "to": "mysql", "label": "CRUD / 事务 / CAS", "labelAt": [970, 286] },
+    { "id": "services_to_mq", "from": "domain_services", "to": "rocketmq", "label": "syncSend / 延时消息", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelAt": [815, 440] },
+    { "id": "mq_to_services", "from": "rocketmq", "to": "domain_services", "label": "订单 / 超时 / CDC 消费", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelAt": [1070, 440] },
+    { "id": "mysql_to_canal", "from": "mysql", "to": "canal", "label": "ROW binlog", "variant": "dashed", "labelAt": [1165, 394] },
+    { "id": "canal_to_mq", "from": "canal", "to": "rocketmq", "label": "hmdp-canal", "variant": "dashed", "labelAt": [1055, 596] }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "同步请求",
+      "items": [
+        "RefreshTokenInterceptor 从 Redis 恢复用户，LoginInterceptor 决定是否放行",
+        "RateLimitAspect 以 Lua 滑动窗口或令牌桶执行 GLOBAL / IP / USER 限流"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "异步一致性",
+      "items": [
+        "秒杀先在 Redis 原子预扣减，再由 RocketMQ 消费者事务落库",
+        "订单创建后发送 30 分钟延时消息；取消成功后幂等回补 Redis 状态"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "当前配置边界",
+      "items": [
+        "docker-compose 启动 MySQL、Redis、Canal；RocketMQ 来自外部 study-agent 网络",
+        "RedissonConfig 指向 localhost:6379，而 Spring Redis 配置为 localhost:12379，运行前需统一"
+      ]
+    }
+  ]
+}

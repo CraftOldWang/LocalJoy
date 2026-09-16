@@ -1,0 +1,2 @@
+-- Flyway baseline: 已有数据库表结构的占位文件
+-- 此文件不会被实际执行（因为 baseline-on-migrate=true, baseline-version=1）

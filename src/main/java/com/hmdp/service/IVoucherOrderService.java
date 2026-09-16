@@ -18,4 +18,18 @@ public interface IVoucherOrderService extends IService<VoucherOrder> {
 
     void createVoucherOrder(VoucherOrder voucherOrder);
 
+    /**
+     * 超时关单：取消未支付订单并回滚库存
+     *
+     * @param orderId 订单ID
+     */
+    void cancelOrder(Long orderId);
+
+    /**
+     * 发送超时关单延时消息
+     *
+     * @param orderId 订单ID
+     */
+    void sendOrderTimeoutDelayMessage(Long orderId);
+
 }

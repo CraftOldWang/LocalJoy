@@ -14,8 +14,6 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.SystemConstants;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.cache.CacheProperties;
-import org.springframework.cglib.core.Local;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
@@ -25,14 +23,10 @@ import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -273,6 +267,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
 
     // 如果失败了，只有数据库会回滚....
+    // 注意：Canal 也会异步监听 binlog 删除此缓存（双保险机制），
+    // 但这里的手动删除保证了低延迟的缓存失效
     @Transactional
     @Override
     public Result update(Shop shop) {
@@ -284,7 +280,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 修改数据库
         shopMapper.updateById(shop);
 
-        // 删除缓存
+        // 删除缓存（Canal 异步也会删除，此处为即时生效的主动删除）
         stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
         return Result.ok();
     }

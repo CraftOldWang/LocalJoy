@@ -1,0 +1,81 @@
+name: hmdp
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: hmdp-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: hmdp
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --server-id=12001
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
+      - --expire-logs-days=7
+      - --default-time-zone=+08:00
+      - --sql-mode=NO_ENGINE_SUBSTITUTION
+    ports:
+      - "12306:3306"
+    volumes:
+      - hmdp-mysql-data:/var/lib/mysql
+      - ./src/main/resources/db/hmdp.sql:/docker-entrypoint-initdb.d/01-hmdp.sql:ro
+      - ./docker/mysql/init/02-canal-user.sql:/docker-entrypoint-initdb.d/02-canal-user.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - hmdp-net
+
+  redis:
+    image: redis:6.2
+    container_name: hmdp-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "12379:6379"
+    volumes:
+      - hmdp-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - hmdp-net
+
+  canal:
+    image: canal/canal-server:v1.1.7
+    container_name: hmdp-canal
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "12111:11111"
+      - "12112:11112"
+    volumes:
+      - ./docker/canal/canal.properties:/home/admin/canal-server/conf/canal.properties:ro
+      - ./docker/canal/hmdp:/home/admin/canal-server/conf/hmdp:ro
+      - hmdp-canal-logs:/home/admin/canal-server/logs
+    networks:
+      - hmdp-net
+      - study-agent-net
+
+volumes:
+  hmdp-mysql-data:
+  hmdp-redis-data:
+  hmdp-canal-logs:
+
+networks:
+  hmdp-net:
+    name: hmdp-net
+  study-agent-net:
+    external: true
+    name: study-agent_study-agent-net

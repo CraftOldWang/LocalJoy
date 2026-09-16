@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hmdp.mapper.ProductMapper">
+
+    <select id="queryProductOfShop" resultType="com.hmdp.entity.Product" parameterType="java.lang.Long">
+        SELECT
+            p.`id`, p.`shop_id`, p.`title`, p.`sub_title`, p.`description`, p.`image`,
+            p.`price`, p.`status`, sp.`stock`, sp.`begin_time`, sp.`end_time`
+        FROM tb_product p
+        LEFT JOIN tb_seckill_product sp ON p.id = sp.product_id
+        WHERE p.shop_id = #{shopId} AND p.status = 1
+    </select>
+</mapper>

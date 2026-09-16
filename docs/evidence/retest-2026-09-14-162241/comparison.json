@@ -1,0 +1,60 @@
+{
+  "parameters": {
+    "iterations": 3,
+    "orderRequestsPerIteration": 200,
+    "orderConcurrency": 16,
+    "cacheRoundsPerIteration": 3,
+    "cacheReadsPerPathPerRound": 500,
+    "httpIncluded": false
+  },
+  "baseline": {
+    "acceptanceTps": 531.9021619163371,
+    "persistedTps": 76.86730673560537,
+    "cacheMeanMs": 1.1511522,
+    "databaseMeanMs": 1.1626060666666669
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "accepted": 200,
+      "persisted": 200,
+      "acceptanceTps": 910.468613643099,
+      "persistedTps": 127.37102760015534,
+      "cacheMeanMs": 0.9347791333333332,
+      "databaseMeanMs": 0.9564817333333333,
+      "cacheReductionPercent": 2.2690030811531203
+    },
+    {
+      "round": 2,
+      "accepted": 200,
+      "persisted": 200,
+      "acceptanceTps": 802.5807787521554,
+      "persistedTps": 121.85345440530092,
+      "cacheMeanMs": 0.9970586666666668,
+      "databaseMeanMs": 1.0136426666666667,
+      "cacheReductionPercent": 1.6360795125698435
+    },
+    {
+      "round": 3,
+      "accepted": 200,
+      "persisted": 200,
+      "acceptanceTps": 787.7005288621351,
+      "persistedTps": 123.84962277881894,
+      "cacheMeanMs": 1.0211741333333333,
+      "databaseMeanMs": 1.0055022000000002,
+      "cacheReductionPercent": -1.558617508080351
+    }
+  ],
+  "aggregate": {
+    "accepted": 600,
+    "persisted": 600,
+    "acceptanceTps": 830.1432771953554,
+    "persistedTps": 124.31643571849885,
+    "cacheMeanMs": 0.9843373111111111,
+    "databaseMeanMs": 0.9918755333333333,
+    "cacheReductionPercent": 0.7599967908159755,
+    "acceptanceIncreasePercent": 56.07067175747418,
+    "persistedIncreasePercent": 61.7286216962182
+  },
+  "note": "Aggregate order TPS = total successful orders / sum of measured batch durations. No code or workload changes. Earlier power-saving mode is user-reported; this is not a controlled power-mode experiment."
+}

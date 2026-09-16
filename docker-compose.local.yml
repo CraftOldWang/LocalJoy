@@ -1,0 +1,53 @@
+# Optional self-contained RocketMQ overlay; do not combine with an existing broker on the same ports.
+# docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+services:
+  namesrv:
+    image: apache/rocketmq:5.3.2
+    restart: unless-stopped
+    command: sh mqnamesrv
+    environment:
+      JAVA_OPT_EXT: '-Xms256m -Xmx256m -Xmn128m'
+    ports:
+      - '127.0.0.1:9876:9876'
+    networks:
+      study-agent-net:
+        aliases:
+          - study-agent-rocketmq-namesrv
+
+  broker:
+    image: apache/rocketmq:5.3.2
+    restart: unless-stopped
+    depends_on:
+      - namesrv
+    command: sh /localjoy/start-broker.sh
+    environment:
+      JAVA_OPT_EXT: '-Xms512m -Xmx512m -Xmn256m'
+      ROCKETMQ_BROKER_IP: ${ROCKETMQ_BROKER_IP:-host.docker.internal}
+    ports:
+      - '10909:10909'
+      - '10911:10911'
+      - '10912:10912'
+    volumes:
+      - ./docker/rocketmq/start-broker.sh:/localjoy/start-broker.sh:ro
+      - hmdp-broker-store:/home/rocketmq/store
+      - hmdp-broker-logs:/home/rocketmq/logs
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    networks:
+      - study-agent-net
+
+  canal:
+    depends_on:
+      broker:
+        condition: service_started
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+volumes:
+  hmdp-broker-store:
+  hmdp-broker-logs:
+
+networks:
+  study-agent-net:
+    external: false
+    name: hmdp-mq-net

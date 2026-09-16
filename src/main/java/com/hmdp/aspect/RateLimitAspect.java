@@ -14,6 +14,7 @@ import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.expression.ExpressionParser;
@@ -37,47 +38,18 @@ import java.util.UUID;
 @Order(Ordered.HIGHEST_PRECEDENCE + 100)
 public class RateLimitAspect {
 
-    private static final DefaultRedisScript<Long> SLIDING_WINDOW_SCRIPT = new DefaultRedisScript<>(
-            "local key = KEYS[1]\n" +
-                    "local now = tonumber(ARGV[1])\n" +
-                    "local window = tonumber(ARGV[2])\n" +
-                    "local limit = tonumber(ARGV[3])\n" +
-                    "local member = ARGV[4]\n" +
-                    "redis.call('zremrangebyscore', key, 0, now - window)\n" +
-                    "local count = redis.call('zcard', key)\n" +
-                    "if count >= limit then return 0 end\n" +
-                    "redis.call('zadd', key, now, member)\n" +
-                    "redis.call('pexpire', key, window)\n" +
-                    "return 1",
-            Long.class
-    );
+    private static final DefaultRedisScript<Long> SLIDING_WINDOW_SCRIPT;
+    private static final DefaultRedisScript<Long> TOKEN_BUCKET_SCRIPT;
 
-    private static final DefaultRedisScript<Long> TOKEN_BUCKET_SCRIPT = new DefaultRedisScript<>(
-            "local key = KEYS[1]\n" +
-                    "local now = tonumber(ARGV[1])\n" +
-                    "local capacity = tonumber(ARGV[2])\n" +
-                    "local refillTokens = tonumber(ARGV[3])\n" +
-                    "local refillInterval = tonumber(ARGV[4])\n" +
-                    "local permits = tonumber(ARGV[5])\n" +
-                    "local tokens = tonumber(redis.call('hget', key, 'tokens') or capacity)\n" +
-                    "local last = tonumber(redis.call('hget', key, 'last') or now)\n" +
-                    "local delta = math.max(0, now - last)\n" +
-                    "local rounds = math.floor(delta / refillInterval)\n" +
-                    "if rounds > 0 then\n" +
-                    "  tokens = math.min(capacity, tokens + rounds * refillTokens)\n" +
-                    "  last = last + rounds * refillInterval\n" +
-                    "end\n" +
-                    "if tokens < permits then\n" +
-                    "  redis.call('hmset', key, 'tokens', tokens, 'last', last)\n" +
-                    "  redis.call('pexpire', key, math.max(refillInterval, math.ceil(capacity / refillTokens) * refillInterval))\n" +
-                    "  return 0\n" +
-                    "end\n" +
-                    "tokens = tokens - permits\n" +
-                    "redis.call('hmset', key, 'tokens', tokens, 'last', last)\n" +
-                    "redis.call('pexpire', key, math.max(refillInterval, math.ceil(capacity / refillTokens) * refillInterval))\n" +
-                    "return 1",
-            Long.class
-    );
+    static {
+        SLIDING_WINDOW_SCRIPT = new DefaultRedisScript<>();
+        SLIDING_WINDOW_SCRIPT.setLocation(new ClassPathResource("rate_limit_sliding_window.lua"));
+        SLIDING_WINDOW_SCRIPT.setResultType(Long.class);
+
+        TOKEN_BUCKET_SCRIPT = new DefaultRedisScript<>();
+        TOKEN_BUCKET_SCRIPT.setLocation(new ClassPathResource("rate_limit_token_bucket.lua"));
+        TOKEN_BUCKET_SCRIPT.setResultType(Long.class);
+    }
 
     private final ExpressionParser expressionParser = new SpelExpressionParser();
     private final DefaultParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
@@ -165,12 +137,9 @@ public class RateLimitAspect {
             return "unknown";
         }
         HttpServletRequest request = ((ServletRequestAttributes) attributes).getRequest();
-        String ip = request.getHeader("X-Forwarded-For");
-        if (StrUtil.isNotBlank(ip)) {
-            return ip.split(",")[0].trim();
-        }
-        ip = request.getHeader("X-Real-IP");
-        return StrUtil.isBlank(ip) ? request.getRemoteAddr() : ip;
+        // Never trust arbitrary client-supplied forwarding headers. A deployment using a
+        // reverse proxy must configure a trusted proxy layer to normalize remoteAddr.
+        return request.getRemoteAddr();
     }
 
     private String resolveBusinessKey(ProceedingJoinPoint joinPoint, RateLimit rateLimit) {

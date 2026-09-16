@@ -1,16 +1,17 @@
 server:
     port: 8081
+    address: 127.0.0.1
 spring:
     application:
         name: hmdp
     datasource:
         driver-class-name: com.mysql.jdbc.Driver
-        url: jdbc:mysql://127.0.0.1:3306/hmdp?allowPublicKeyRetrieval=True&useSSL=false&serverTimezone=UTC
+        url: jdbc:mysql://127.0.0.1:12306/hmdp?allowPublicKeyRetrieval=True&useSSL=false&serverTimezone=UTC
         username: root
         password: 123456
     redis:
         host: 127.0.0.1
-        port: 6379
+        port: 12379
         #    password: 123321
         lettuce:
             pool:
@@ -20,6 +21,11 @@ spring:
                 time-between-eviction-runs: 10s
     jackson:
         default-property-inclusion: non_null # JSON处理时忽略非空字段
+    flyway:
+        enabled: true
+        baseline-on-migrate: true
+        baseline-version: 1
+        locations: classpath:db/migration
 mybatis-plus:
     type-aliases-package: com.hmdp.entity # 别名扫描包
 logging:
@@ -29,3 +35,18 @@ rocketmq:
     name-server: 127.0.0.1:9876
     producer:
         group: hmdp-seckill-producer
+canal:
+    # TCP client disabled; Canal writes binlog events to RocketMQ and this app consumes them there.
+    enabled: false
+    mq:
+        enabled: true
+    server:
+        host: 127.0.0.1
+        port: 12111
+    destination: hmdp
+    username:
+    password:
+    subscribe: 'hmdp\.(tb_shop|tb_shop_type|tb_product)'
+    batch-size: 100
+    empty-sleep-millis: 200
+    reconnect-seconds: 5

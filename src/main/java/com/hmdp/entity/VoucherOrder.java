@@ -77,5 +77,10 @@ public class VoucherOrder implements Serializable {
      */
     private LocalDateTime updateTime;
 
+    /**
+     * 关单原因，如 TIMEOUT_AUTO_CLOSE
+     */
+    private String closeReason;
+
 
 }

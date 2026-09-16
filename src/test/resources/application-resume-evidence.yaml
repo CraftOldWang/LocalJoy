@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:12306/hmdp_resume_test?useSSL=false&serverTimezone=UTC
+    username: root
+    password: 123456
+  redis:
+    database: 14
+  autoconfigure:
+    exclude: org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration
+canal:
+  enabled: false
+  mq:
+    enabled: false
+  database: hmdp_resume_test
+logging:
+  level:
+    com.hmdp: warn

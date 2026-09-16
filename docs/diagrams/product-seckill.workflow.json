@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "商品秒杀：异步落单与超时关单 Workflow",
+    "locale": "zh-CN",
+    "output": "product-seckill.workflow.html",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "frontend": { "label": "客户端响应" },
+        "backend": { "label": "应用逻辑" },
+        "database": { "label": "Redis / MySQL" },
+        "security": { "label": "校验 / 回滚" },
+        "messagebus": { "label": "RocketMQ" },
+        "external": { "label": "外部请求" }
+      }
+    },
+    "views": [
+      {
+        "id": "fast_path",
+        "label": "请求快路径",
+        "focus": ["request", "guard", "lua_gate", "publish", "accepted", "rejected"],
+        "note": "同步路径只完成准入、Redis 原子预扣减与可靠投递尝试。"
+      },
+      {
+        "id": "async_persist",
+        "label": "异步落单",
+        "focus": ["publish", "persist", "terminal_cas"],
+        "note": "消费者以 Redisson 锁和数据库检查兜底一人一单，再事务扣库存并写订单。"
+      },
+      {
+        "id": "terminal_race",
+        "label": "支付与超时竞争",
+        "focus": ["persist", "terminal_cas", "send_rollback"],
+        "note": "支付与 30 分钟超时通过 status + version CAS 竞争唯一终态。"
+      }
+    ],
+    "viewBox": [1000, 520]
+  },
+  "lanes": [
+    { "id": "client_lane", "label": "客户端" },
+    { "id": "app_lane", "label": "Spring Boot 应用" },
+    { "id": "infra_lane", "label": "Redis / RocketMQ / MySQL" }
+  ],
+  "phases": [
+    { "id": "admission_phase", "label": "准入", "fromCol": 0, "toCol": 1 },
+    { "id": "reserve_phase", "label": "预扣减与投递", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "settle_phase", "label": "异步落单与终局", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["request", "guard", "lua_gate", "publish", "persist", "terminal_cas"],
+  "nodes": [
+    {
+      "id": "request",
+      "lane": "client_lane",
+      "col": 0,
+      "type": "external",
+      "label": "发起秒杀",
+      "sublabel": "商品 ID",
+      "tag": "POST"
+    },
+    {
+      "id": "guard",
+      "lane": "app_lane",
+      "col": 1,
+      "type": "security",
+      "label": "鉴权 + 三级限流",
+      "sublabel": "GLOBAL / IP / USER",
+      "tag": "Redis Lua",
+      "width": 100
+    },
+    {
+      "id": "lua_gate",
+      "lane": "infra_lane",
+      "col": 2,
+      "type": "database",
+      "label": "Lua 准入",
+      "sublabel": "库存 / 防重",
+      "tag": "seckill.lua",
+      "width": 62
+    },
+    {
+      "id": "rejected",
+      "lane": "client_lane",
+      "col": 2,
+      "type": "security",
+      "label": "拒绝请求",
+      "sublabel": "售罄 / 重复",
+      "tag": "Lua 1 / 2",
+      "width": 96
+    },
+    {
+      "id": "publish",
+      "lane": "app_lane",
+      "col": 3,
+      "type": "messagebus",
+      "label": "投递",
+      "sublabel": "RocketMQ",
+      "tag": "syncSend",
+      "width": 54
+    },
+    {
+      "id": "accepted",
+      "lane": "client_lane",
+      "col": 4,
+      "type": "frontend",
+      "label": "返回 orderId",
+      "sublabel": "不等待数据库落单",
+      "width": 96
+    },
+    {
+      "id": "persist",
+      "lane": "app_lane",
+      "col": 4,
+      "type": "backend",
+      "label": "落单",
+      "sublabel": "锁 / 事务",
+      "tag": "UNPAID",
+      "width": 54
+    },
+    {
+      "id": "terminal_cas",
+      "lane": "infra_lane",
+      "col": 5,
+      "type": "database",
+      "label": "终态 CAS",
+      "sublabel": "支付 / 30 分钟超时",
+      "tag": "取消即回补",
+      "width": 92
+    },
+    {
+      "id": "send_rollback",
+      "lane": "infra_lane",
+      "col": 3,
+      "type": "security",
+      "label": "失败回补",
+      "sublabel": "Redis",
+      "width": 62
+    }
+  ],
+  "edges": [
+    { "id": "request_to_guard", "from": "request", "to": "guard", "label": "Authorization", "variant": "emphasis", "role": "main" },
+    { "id": "guard_to_lua", "from": "guard", "to": "lua_gate", "label": "用户 / 商品", "variant": "security", "role": "main" },
+    { "id": "lua_to_reject", "from": "lua_gate", "to": "rejected", "variant": "security", "role": "error", "route": "up-channel" },
+    { "id": "lua_to_publish", "from": "lua_gate", "to": "publish", "variant": "emphasis", "role": "main" },
+    { "id": "publish_to_accept", "from": "publish", "to": "accepted", "label": "发送成功", "role": "return" },
+    { "id": "publish_to_persist", "from": "publish", "to": "persist", "variant": "dashed", "role": "async", "route": "bottom-channel" },
+    { "id": "publish_to_rollback", "from": "publish", "to": "send_rollback", "variant": "security", "role": "error" },
+    { "id": "persist_to_terminal", "from": "persist", "to": "terminal_cas", "variant": "emphasis", "role": "main" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "一致性边界",
+      "items": [
+        "POST /product-order/seckill/{id} 返回 orderId 只证明消息发送成功，不证明数据库订单已落地",
+        "product-seckill-order-topic 的消费者以 Redisson 锁、重复检查和事务落单兜底",
+        "支付与 30 分钟超时以 status + version CAS 决胜；取消成功后幂等回补库存"
+      ]
+    }
+  ]
+}
