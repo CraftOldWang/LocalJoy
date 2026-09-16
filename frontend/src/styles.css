@@ -228,3 +228,9 @@ input[aria-invalid="true"] { border-color: var(--color-danger); }
   .login-panel h1 { font-size: 30px; }
   .code-row button { padding-left: 10px; padding-right: 10px; font-size: 13px; }
 }
+/* Payment shares the order card, with reserved space for the local QR renderer. */
+.payment-panel { border-top: 1px dashed var(--color-border); margin-block: 24px; padding-top: 24px; }
+.payment-panel h3 { margin: 0; }
+.payment-amount { font-family: var(--font-numeric); font-size: 28px; }
+.payment-qr { width: min(100%, 288px); margin-block: 16px; text-align: center; }
+.payment-qr img { display: block; width: 256px; height: 256px; max-width: 100%; object-fit: contain; }

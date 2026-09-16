@@ -55,7 +55,7 @@ function App() {
       {['product', 'products', 'order', 'orders', 'login'].map(kind => <Route key={kind} path={'/' + kind + '.html'} element={<Compat kind={kind}/>}/>)}
       <Route path="*" element={<State empty="这个页面还没有到来"><Link to="/">返回附近好物 →</Link></State>}/>
     </Routes></main>
-    <footer className="site-footer"><div><strong>趣享生活 LocalJoy</strong><p>发现附近的好物，认真过好每一天。</p></div><div><p>本地学习演示 · 模拟支付，不发生真实扣款</p><a href="/legacy/index.html">原版页面存档</a><span> · </span><a href="https://github.com/CraftOldWang/LocalJoy#readme" target="_blank" rel="noreferrer">项目文档 ↗</a></div></footer>
+    <footer className="site-footer"><div><strong>趣享生活 LocalJoy</strong><p>发现附近的好物，认真过好每一天。</p></div><div><p>本地学习演示 · 本地模拟 / 支付宝沙箱，不扣真实资金</p><a href="/legacy/index.html">原版页面存档</a><span> · </span><a href="https://github.com/CraftOldWang/LocalJoy#readme" target="_blank" rel="noreferrer">项目文档 ↗</a></div></footer>
     <nav className="mobile-nav" aria-label="移动端导航"><NavLink to="/" end><Icon name="bag"/>附近好物</NavLink><NavLink to="/orders"><Icon name="receipt"/>我的订单</NavLink></nav>
   </>;
 }

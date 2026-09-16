@@ -15,3 +15,6 @@ canal:
 logging:
   level:
     com.hmdp: warn
+localjoy:
+  payment:
+    reconcile-enabled: false

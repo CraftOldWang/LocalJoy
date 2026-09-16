@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.ProductOrder;
+import com.hmdp.entity.Product;
+import com.hmdp.mapper.ProductMapper;
+import com.hmdp.utils.ProductCache;
+import com.hmdp.payment.PaymentService;
 import com.hmdp.mapper.ProductOrderMapper;
 import com.hmdp.mq.RocketMqConstants;
 import com.hmdp.service.IProductOrderService;
@@ -44,6 +48,9 @@ public class ProductOrderServiceImpl extends ServiceImpl<ProductOrderMapper, Pro
     @Resource private StringRedisTemplate stringRedisTemplate;
     @Resource private RedissonClient redissonClient;
     @Resource private RocketMQTemplate rocketMQTemplate;
+    @Resource private ProductMapper productMapper;
+    @Resource private ProductCache productCache;
+    @Resource private PaymentService payments;
     @Value("${localjoy.order.timeout-seconds:1800}") private long timeoutSeconds;
     @Value("${localjoy.order.delay-level:16}") private int delayLevel;
 
@@ -59,6 +66,8 @@ public class ProductOrderServiceImpl extends ServiceImpl<ProductOrderMapper, Pro
     @Override
     public Result seckillProduct(Long productId) {
         if (productId == null || productId <= 0) return Result.fail("商品不存在");
+        Product product = productCache.get(productId, () -> productMapper.selectById(productId));
+        if (product == null || !Integer.valueOf(1).equals(product.getStatus())) return Result.fail("商品不存在或已下架");
         Long userId = UserHolder.getUser().getId();
         RLock lock = buyerLock(productId, userId);
         if (!acquire(lock)) return Result.fail("请求处理中，请稍后查询订单");
@@ -75,7 +84,8 @@ public class ProductOrderServiceImpl extends ServiceImpl<ProductOrderMapper, Pro
                 if (Long.valueOf(5).equals(result)) return Result.fail("活动已结束");
                 return Result.fail("活动未就绪");
             }
-            ProductOrder order = new ProductOrder().setId(orderId).setUserId(userId).setProductId(productId);
+            ProductOrder order = new ProductOrder().setId(orderId).setUserId(userId).setProductId(productId)
+                    .setTotalAmount(product.getPrice()).setSubject(product.getTitle());
             try {
                 requireSendOk(rocketMQTemplate.syncSend(RocketMqConstants.PRODUCT_SECKILL_ORDER_TOPIC, order));
             } catch (Exception e) {
@@ -115,6 +125,7 @@ public class ProductOrderServiceImpl extends ServiceImpl<ProductOrderMapper, Pro
                 }
                 // Persist rejected attempts too: duplicate messages cannot repeatedly compensate.
                 ProductOrder created = new ProductOrder().setId(incoming.getId()).setUserId(incoming.getUserId())
+                        .setTotalAmount(incoming.getTotalAmount()).setSubject(incoming.getSubject())
                         .setProductId(incoming.getProductId()).setStatus(rejection == null ? UNPAID : CANCELED)
                         .setVersion(0).setCloseReason(rejection).setCreateTime(LocalDateTime.now())
                         .setExpireTime(LocalDateTime.now().plusSeconds(timeoutSeconds));
@@ -152,6 +163,9 @@ public class ProductOrderServiceImpl extends ServiceImpl<ProductOrderMapper, Pro
         RLock lock = buyerLock(identity.getProductId(), identity.getUserId());
         if (!acquire(lock)) throw new IllegalStateException("关单等待订单处理，稍后重试");
         try {
+        ProductOrder latest = getById(orderId);
+        if (Integer.valueOf(UNPAID).equals(latest.getStatus()) && latest.getExpireTime() != null
+                && !latest.getExpireTime().isAfter(LocalDateTime.now()) && !payments.beforeClose(latest)) return;
         ProductOrder order = transactions.execute(tx -> {
             ProductOrder current = getById(orderId);
             if (current == null) return null;
@@ -184,6 +198,12 @@ public class ProductOrderServiceImpl extends ServiceImpl<ProductOrderMapper, Pro
     @Override
     public Result payOrder(Long orderId) {
         Long userId = UserHolder.getUser().getId();
+        ProductOrder identity = getById(orderId);
+        if (identity == null || !userId.equals(identity.getUserId())) return Result.fail("订单不存在");
+        RLock lock = buyerLock(identity.getProductId(), userId);
+        if (!acquire(lock)) return Result.fail("订单正在处理，请稍后查询");
+        try {
+        if (!payments.mockAllowed(orderId)) return Result.fail("该订单已选择支付宝，或本地模拟支付已关闭");
         Boolean paid = transactions.execute(tx -> {
             ProductOrder order = getById(orderId);
             if (order == null || !userId.equals(order.getUserId())) return false;
@@ -199,6 +219,7 @@ public class ProductOrderServiceImpl extends ServiceImpl<ProductOrderMapper, Pro
             return latest != null && Integer.valueOf(PAID).equals(latest.getStatus());
         });
         return Boolean.TRUE.equals(paid) ? Result.ok() : Result.fail("订单不存在、已超时或状态已变更");
+        } finally { release(lock); }
     }
 
     @Override

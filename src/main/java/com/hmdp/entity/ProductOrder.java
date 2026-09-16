@@ -30,6 +30,10 @@ public class ProductOrder implements Serializable {
 
     private Integer payType;
 
+    private Long totalAmount;
+
+    private String subject;
+
     private Integer status;
 
     private Integer version;

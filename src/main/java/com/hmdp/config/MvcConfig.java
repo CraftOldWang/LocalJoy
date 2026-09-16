@@ -18,10 +18,12 @@ public class MvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         // 刷新token拦截器
-        registry.addInterceptor(refreshTokenInterceptor).order(0);
+        registry.addInterceptor(refreshTokenInterceptor).excludePathPatterns("/payment/alipay/notify").order(0);
         // 登录拦截器
         registry.addInterceptor(loginInterceptor)
                 .excludePathPatterns(
+                        "/payment/options",
+                        "/payment/alipay/notify",
                         "/shop/**",
                         "/voucher/**",
                         "/product/**",

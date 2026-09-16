@@ -2,6 +2,8 @@
 
 验收日期：2026-09-16。主站从恢复版 Vue 页面迁移为 React 19 + React Router 7 + Vite 8，保留原来的 Java API。原版 Vue 页面位于 `frontend/public/legacy`，仅作来源存档。
 
+同日后续新增支付宝沙箱支付与订单金额快照；下表保留 React 初次验收记录，新增支付验证与待验证项见[支付接入指南](alipay-sandbox.md#2026-09-16-本次证据)。
+
 ## 改造范围
 
 围绕简历中的业务主线组织页面：附近店铺与商品 → 商品活动 → 秒杀受理 → 我的订单 → 模拟支付 / 超时关闭。没有继续建设笔记、签到、关注和聊天页面，也没有把 Redis、MQ 等内部实现细节塞进购买流程。
@@ -41,7 +43,7 @@
 - 功能测试：`scripts/test-resume.ps1`；首次消息回归可单独运行 `mvn "-Dtest=ResumeEvidenceTest#freshConsumerGroupsReceiveMessagesPublishedBeforeStartup" "-Dresume.realMq=true" test`。
 - 默认业务超时仍为 30 分钟；120 秒是本轮运行参数，不写入应用默认配置。
 - 独立 RocketMQ Compose 覆盖文件通过配置校验，尚未在空环境完整验收。
-- 真实支付、退款、核销、订单价格快照、原版社交业务不在本轮实现范围。CI 的 Java 打包不能替代本地中间件集成测试。
+- 初次 React 验收未包含支付渠道与金额快照；后续已新增支付宝沙箱和新订单快照。生产支付、退款、核销、原版社交业务仍未实现。CI 的 Java 打包不能替代本地中间件集成测试。
 
 ![桌面首页](screenshots/react-home.png)
 
