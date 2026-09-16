@@ -157,6 +157,8 @@ docs/                      机制说明、测量原始数据、截图与验收
 
 ## 文档索引
 
+- [支付、超时关单与并发冲突验证](docs/payment-verification-2026-09-16.md)：简历 bullet 对应场景、实际并发、CAS 冲突、补偿失败恢复及真实 MQ 证据。
+
 - [启动与演示指南](docs/local-setup.md)：环境、端口、验证码、故障定位。
 - [前端验收记录](docs/frontend-acceptance.md)：React 流程与浏览器检查。
 - [商品秒杀与缓存一致性详解](docs/商品秒杀与缓存一致性详解.md)：重复补偿、迟到消息、支付竞争、Canal 缓存失效。

@@ -1,0 +1,195 @@
+{
+  "date": "2026-09-16",
+  "businessCodeCommit": "198a09d4e841d3e428418f919a0826004a2d8394",
+  "scope": "Payment verification; no business implementation changes",
+  "environment": "Windows / JDK8 / hmdp_resume_test / Redis DB14 / local RocketMQ",
+  "executions": [
+    "mvn -Dtest=AlipayPaymentTest,AlipaySignatureTest,ResumeEvidenceTest -Dresume.realMq=true test (34 tests at that point)",
+    "mvn -Dtest=AlipayPaymentTest test (16 tests after adding signed HTTP callback case)"
+  ],
+  "summary": {
+    "discovered": 35.0,
+    "passed": 34.0,
+    "skipped": 1.0,
+    "failures": 0.0,
+    "errors": 0.0
+  },
+  "boundaries": [
+    "Payment transport mocked; signature/HTTP test uses real RSA2 with temporary generated keys and MockMvc",
+    "Real broker retries and delay delivery observed on isolated topics",
+    "Sandbox buyer payment and public callback not verified",
+    "One optional cache benchmark skipped; short service batch is not an HTTP TPS claim"
+  ],
+  "suites": [
+    {
+      "name": "com.hmdp.AlipayPaymentTest",
+      "timestamp": null,
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "terminalConflictIsRetainedForManualReview",
+          "skipped": false
+        },
+        {
+          "name": "authoritativeQueryRecoversMissingNotification",
+          "skipped": false
+        },
+        {
+          "name": "callbackNeedsNoLoginButRejectsDuplicatesAndBadSignatures",
+          "skipped": false
+        },
+        {
+          "name": "signedIdentityAndAmountMustAllMatch",
+          "skipped": false
+        },
+        {
+          "name": "channelClosedButDatabaseRollbackRecoversFromPersistedLedger",
+          "skipped": false
+        },
+        {
+          "name": "concurrentDuplicateCallbacksAndLateNotificationPayOnce",
+          "skipped": false
+        },
+        {
+          "name": "realSignedHttpCallbackRejectsTamperingAndAcceptsDuplicateSuccess",
+          "skipped": false
+        },
+        {
+          "name": "redisFailureAfterCancelCommitRetriesOnlyReservationCompensation",
+          "skipped": false
+        },
+        {
+          "name": "queryFailureOrWrongIdentityCannotReleaseStock",
+          "skipped": false
+        },
+        {
+          "name": "scheduledRecoveryPaysWithoutCallbackAndClosesConfirmedExpiredOrders",
+          "skipped": false
+        },
+        {
+          "name": "paymentWinningCloseRaceKeepsInventoryDeducted",
+          "skipped": false
+        },
+        {
+          "name": "staleDatabaseVersionRejectsCallbackUntilRetryEvenWithoutRedisContender",
+          "skipped": false
+        },
+        {
+          "name": "unknownCreateIsNeverRepeatedOrRestockedOnNotFound",
+          "skipped": false
+        },
+        {
+          "name": "closeConfirmsChannelBeforeRestockingAndRepeatsAreHarmless",
+          "skipped": false
+        },
+        {
+          "name": "callbackAndTimeoutRunConcurrentlyWithoutCancelingPaidOrder",
+          "skipped": false
+        },
+        {
+          "name": "amountIsSnapshotAndOnlyOwnerCanCreateOneAttempt",
+          "skipped": false
+        }
+      ]
+    },
+    {
+      "name": "com.hmdp.AlipaySignatureTest",
+      "timestamp": null,
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "realRsa2VerificationRejectsTamperingWithoutCallingAlipay",
+          "skipped": false
+        }
+      ]
+    },
+    {
+      "name": "com.hmdp.ResumeEvidenceTest",
+      "timestamp": null,
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "cases": [
+        {
+          "name": "activityTimeAndMissingMetadataFailClosed",
+          "skipped": false
+        },
+        {
+          "name": "concurrentAdmissionsAndDuplicateConsumptionNeverOversell",
+          "skipped": false
+        },
+        {
+          "name": "invalidationWaitsForInFlightFillThenRemovesStaleValue",
+          "skipped": false
+        },
+        {
+          "name": "canalInvalidationCoversUpdatesDeletesAndDuplicateEvents",
+          "skipped": false
+        },
+        {
+          "name": "slidingWindowScopesAreIndependentAndCannotSpoofIp",
+          "skipped": false
+        },
+        {
+          "name": "realBrokerRetriesDeliveryAndDelaysCloseThenMeasuresAcceptedOrders",
+          "skipped": false
+        },
+        {
+          "name": "delaySendFailureRetriesAfterCommitWithoutSecondStockDeduction",
+          "skipped": false
+        },
+        {
+          "name": "databaseRejectionCompensatesOnlyOnce",
+          "skipped": false
+        },
+        {
+          "name": "ambiguousSendAndLateMessageCannotConsumeReplacedReservation",
+          "skipped": false
+        },
+        {
+          "name": "paymentIsOwnedIdempotentAndCannotRacePastDeadline",
+          "skipped": false
+        },
+        {
+          "name": "myOrderListIsOwnedPagedAndIdsStayExactInJson",
+          "skipped": false
+        },
+        {
+          "name": "freshConsumerGroupsReceiveMessagesPublishedBeforeStartup",
+          "skipped": false
+        },
+        {
+          "name": "databaseUniqueConstraintRejectsAnotherActiveOrder",
+          "skipped": false
+        },
+        {
+          "name": "hotProductCacheAndNullCacheAvoidRepeatedDatabaseLoads",
+          "skipped": false
+        },
+        {
+          "name": "measureWarmProductReadsAgainstDirectDatabase",
+          "skipped": true
+        },
+        {
+          "name": "repeatedCloseAndLateReplayDoNotUndoRepurchase",
+          "skipped": false
+        },
+        {
+          "name": "canalFailuresPropagateForMqRetryAndForeignSchemasAreIgnored",
+          "skipped": false
+        },
+        {
+          "name": "earlyDelayCannotCloseOrder",
+          "skipped": false
+        }
+      ]
+    }
+  ]
+}

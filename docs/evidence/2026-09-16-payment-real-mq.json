@@ -1,0 +1,14 @@
+{
+  "run" : "1789532643209",
+  "realBrokerRetryObserved" : true,
+  "realDelayCloseObserved" : true,
+  "operation" : "service call -> real RocketMQ -> MySQL; excludes HTTP/AOP rate limiting",
+  "requests" : 200,
+  "accepted" : 200,
+  "persisted" : 200,
+  "concurrency" : 16,
+  "acceptanceSeconds" : 0.3222303,
+  "endToEndSeconds" : 1.615205899,
+  "acceptanceTps" : 620.6740955149158,
+  "persistedTps" : 123.82322286206559
+}

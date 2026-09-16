@@ -19,6 +19,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.apache.ibatis.plugin.*;
+import org.apache.ibatis.executor.Executor;
+import org.apache.ibatis.mapping.MappedStatement;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.Message;
@@ -36,13 +44,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Real isolated MySQL + Redis. Only Alipay and RocketMQ transport are mocked. */
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("resume-evidence")
 class AlipayPaymentTest {
+    @org.junit.jupiter.api.io.TempDir java.nio.file.Path keyDirectory;
     @Autowired PaymentService payments;
     @Autowired PaymentAttemptMapper attempts;
     @Autowired AlipayProperties config;
     @Autowired IProductService products;
     @Autowired IProductOrderService orders;
     @Autowired JdbcTemplate jdbc;
-    @Autowired StringRedisTemplate redis;
+    @SpyBean StringRedisTemplate redis;
+    @Autowired CasConflictProbe casProbe;
     @Autowired MockMvc mvc;
     @Autowired org.springframework.boot.autoconfigure.data.redis.RedisProperties redisConfig;
     @MockBean PaymentGateway gateway;
@@ -100,6 +110,104 @@ class AlipayPaymentTest {
     void assertStock(ProductOrder o, int expected) {
         assertEquals(expected, jdbc.queryForObject("SELECT stock FROM tb_seckill_product WHERE product_id=?", Integer.class, o.getProductId()).intValue());
         assertEquals(Integer.toString(expected), redis.opsForValue().get(RedisConstants.PRODUCT_SECKILL_STOCK_KEY+o.getProductId()));
+    }
+
+    @Test void callbackAndTimeoutRunConcurrentlyWithoutCancelingPaidOrder() throws Exception {
+        ProductOrder o = order(); start(o); expire(o);
+        when(gateway.query(out(o))).thenReturn(new PaymentGateway.Trade("TRADE_SUCCESS", out(o), tradeNo(o), 1990L));
+        ExecutorService pool = Executors.newFixedThreadPool(16);
+        CountDownLatch ready = new CountDownLatch(16), go = new CountDownLatch(1);
+        List<Future<?>> workers = new ArrayList<>();
+        try {
+            for (int i = 0; i < 16; i++) {
+                final boolean callback = i % 2 == 0;
+                workers.add(pool.submit(() -> {
+                    ready.countDown(); assertTrue(go.await(5, TimeUnit.SECONDS));
+                    if (callback) assertTrue(payments.notify(notification(o)));
+                    else orders.cancelOrder(o.getId());
+                    return null;
+                }));
+            }
+            assertTrue(ready.await(5, TimeUnit.SECONDS)); go.countDown();
+            for (Future<?> worker : workers) worker.get(15, TimeUnit.SECONDS);
+        } finally { go.countDown(); pool.shutdownNow(); }
+        assertEquals(Integer.valueOf(2), orders.getById(o.getId()).getStatus());
+        assertEquals(Integer.valueOf(2), orders.getById(o.getId()).getVersion());
+        assertEquals("SUCCEEDED", attempts.selectById(o.getId()).getState());
+        assertStock(o, 1);
+        assertEquals(o.getId().toString(), redis.opsForHash().get(RedisConstants.PRODUCT_SECKILL_BUYER_KEY+o.getProductId(), Long.toString(userId)));
+        verify(gateway, never()).close(anyString());
+    }
+
+    @Test void staleDatabaseVersionRejectsCallbackUntilRetryEvenWithoutRedisContender() throws Exception {
+        ProductOrder o = order(); start(o);
+        ExecutorService otherConnection = Executors.newSingleThreadExecutor();
+        // Intercept the actual mapper write after its read. An independent committed DB write
+        // bypasses the Redis lock, proving the version predicate itself rejects stale updates.
+        casProbe.beforeNextOrderUpdate.set(() -> {
+            try {
+                assertEquals(1, otherConnection.submit(() -> jdbc.update(
+                        "UPDATE tb_product_order SET version=version+1 WHERE id=?", o.getId())).get(5, TimeUnit.SECONDS).intValue());
+            } catch (Exception e) { throw new IllegalStateException(e); }
+        });
+        try {
+            assertFalse(payments.notify(notification(o)));
+            assertEquals(Integer.valueOf(0), casProbe.affectedRows.get());
+            assertEquals(Integer.valueOf(1), orders.getById(o.getId()).getStatus());
+            assertEquals(Integer.valueOf(2), orders.getById(o.getId()).getVersion());
+            assertEquals("WAITING", attempts.selectById(o.getId()).getState());
+            assertTrue(payments.notify(notification(o)));
+            assertEquals(Integer.valueOf(2), orders.getById(o.getId()).getStatus());
+            assertEquals(Integer.valueOf(3), orders.getById(o.getId()).getVersion());
+            assertStock(o, 1);
+        } finally { casProbe.beforeNextOrderUpdate.set(null); otherConnection.shutdownNow(); }
+    }
+
+    @Test void channelClosedButDatabaseRollbackRecoversFromPersistedLedger() {
+        ProductOrder o = order(); start(o); expire(o);
+        when(gateway.close(out(o))).thenReturn(true);
+        jdbc.update("DELETE FROM tb_seckill_product WHERE product_id=?", o.getProductId());
+        assertThrows(IllegalStateException.class, () -> orders.cancelOrder(o.getId()));
+        assertEquals(Integer.valueOf(1), orders.getById(o.getId()).getStatus());
+        assertEquals("CLOSED", attempts.selectById(o.getId()).getState());
+        assertEquals("1", redis.opsForValue().get(RedisConstants.PRODUCT_SECKILL_STOCK_KEY+o.getProductId()));
+        jdbc.update("INSERT INTO tb_seckill_product(product_id,stock,begin_time,end_time) VALUES(?,1,?,?)",
+                o.getProductId(), LocalDateTime.now().minusHours(1), LocalDateTime.now().plusHours(1));
+        reconcileOnce();
+        assertEquals(Integer.valueOf(4), orders.getById(o.getId()).getStatus()); assertStock(o, 2);
+        verify(gateway, times(1)).close(out(o));
+    }
+
+    @Test void redisFailureAfterCancelCommitRetriesOnlyReservationCompensation() {
+        ProductOrder o = order(); start(o); expire(o);
+        when(gateway.close(out(o))).thenReturn(true);
+        doThrow(new RedisConnectionFailureException("injected rollback outage")).doCallRealMethod()
+                .when(redis).execute(any(RedisScript.class), anyList(), any(), any(), any());
+        assertThrows(RedisConnectionFailureException.class, () -> orders.cancelOrder(o.getId()));
+        assertEquals(Integer.valueOf(4), orders.getById(o.getId()).getStatus());
+        assertEquals(Integer.valueOf(2), jdbc.queryForObject("SELECT stock FROM tb_seckill_product WHERE product_id=?", Integer.class, o.getProductId()));
+        assertEquals("1", redis.opsForValue().get(RedisConstants.PRODUCT_SECKILL_STOCK_KEY+o.getProductId()));
+        orders.cancelOrder(o.getId()); orders.cancelOrder(o.getId());
+        assertStock(o, 2);
+        assertNull(redis.opsForHash().get(RedisConstants.PRODUCT_SECKILL_BUYER_KEY+o.getProductId(), Long.toString(userId)));
+        assertEquals(Integer.valueOf(2), orders.getById(o.getId()).getVersion());
+        verify(gateway, times(1)).close(out(o));
+    }
+
+    @Test void scheduledRecoveryPaysWithoutCallbackAndClosesConfirmedExpiredOrders() {
+        ProductOrder paid = order(); start(paid); allowQuery(paid);
+        ProductOrder closed = order(); start(closed); expire(closed);
+        when(gateway.query(out(paid))).thenReturn(new PaymentGateway.Trade("TRADE_SUCCESS", out(paid), tradeNo(paid), 1990L));
+        when(gateway.query(out(closed))).thenReturn(new PaymentGateway.Trade("TRADE_CLOSED", out(closed), tradeNo(closed), 1990L));
+        reconcileOnce(); reconcileOnce();
+        assertEquals(Integer.valueOf(2), orders.getById(paid.getId()).getStatus()); assertStock(paid, 1);
+        assertEquals(Integer.valueOf(4), orders.getById(closed.getId()).getStatus()); assertStock(closed, 2);
+    }
+
+    private void reconcileOnce() {
+        // Keep the Spring scheduled bean disabled; run the same recovery method deterministically.
+        AlipayProperties recoveryConfig = new AlipayProperties(); recoveryConfig.setReconcileEnabled(true);
+        new PaymentReconciler(jdbc, payments, orders, recoveryConfig, gateway).reconcile();
     }
 
     @Test void amountIsSnapshotAndOnlyOwnerCanCreateOneAttempt() {
@@ -187,5 +295,58 @@ class AlipayPaymentTest {
                 .andExpect(status().isOk()).andExpect(content().string("failure"));
         mvc.perform(get("/payment/alipay/123")).andExpect(status().isUnauthorized());
         mvc.perform(get("/payment/options")).andExpect(status().isOk());
+    }
+
+    @Test void realSignedHttpCallbackRejectsTamperingAndAcceptsDuplicateSuccess() throws Exception {
+        ProductOrder o = order(); start(o); UserHolder.removeUser();
+        java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        java.security.KeyPair appKey = generator.generateKeyPair(), channelKey = generator.generateKeyPair();
+        java.nio.file.Path privatePath = keyDirectory.resolve("app.txt"), publicPath = keyDirectory.resolve("channel.txt");
+        java.nio.file.Files.write(privatePath, Base64.getEncoder().encode(appKey.getPrivate().getEncoded()));
+        java.nio.file.Files.write(publicPath, Base64.getEncoder().encode(channelKey.getPublic().getEncoded()));
+        AlipayProperties verificationConfig = new AlipayProperties();
+        verificationConfig.setAlipayEnabled(true); verificationConfig.setAppId(config.getAppId()); verificationConfig.setSellerId(config.getSellerId());
+        verificationConfig.setPrivateKeyPath(privatePath.toString()); verificationConfig.setAlipayPublicKeyPath(publicPath.toString());
+        AlipaySandboxGateway verifier = new AlipaySandboxGateway(verificationConfig);
+        when(gateway.verify(anyMap())).thenAnswer(call -> verifier.verify(new HashMap<>(call.getArgument(0))));
+        Map<String,String> signed = notification(o);
+        signed.put("sign", com.alipay.api.internal.util.AlipaySignature.rsaSign(
+                com.alipay.api.internal.util.AlipaySignature.getSignContent(signed),
+                Base64.getEncoder().encodeToString(channelKey.getPrivate().getEncoded()), "UTF-8", "RSA2"));
+        signed.put("sign_type", "RSA2");
+        Map<String,String> tampered = new HashMap<>(signed); tampered.put("total_amount", "0.01");
+        postNotification(tampered, "failure");
+        assertEquals(Integer.valueOf(1), orders.getById(o.getId()).getStatus());
+        postNotification(signed, "success"); postNotification(signed, "success");
+        assertEquals(Integer.valueOf(2), orders.getById(o.getId()).getStatus());
+        assertEquals(Integer.valueOf(2), orders.getById(o.getId()).getVersion());
+        assertStock(o, 1);
+    }
+
+    private void postNotification(Map<String,String> values, String expected) throws Exception {
+        org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request =
+                post("/payment/alipay/notify").contentType("application/x-www-form-urlencoded");
+        values.forEach(request::param);
+        mvc.perform(request).andExpect(status().isOk()).andExpect(content().string(expected));
+    }
+
+    @TestConfiguration static class ProbeConfig {
+        @Bean CasConflictProbe casConflictProbe() { return new CasConflictProbe(); }
+    }
+    @Intercepts(@Signature(type=Executor.class, method="update", args={MappedStatement.class, Object.class}))
+    static class CasConflictProbe implements Interceptor {
+        final java.util.concurrent.atomic.AtomicReference<Runnable> beforeNextOrderUpdate = new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.atomic.AtomicReference<Integer> affectedRows = new java.util.concurrent.atomic.AtomicReference<>();
+        @Override public Object intercept(Invocation invocation) throws Throwable {
+            MappedStatement statement = (MappedStatement) invocation.getArgs()[0];
+            Runnable injection = statement.getId().endsWith("ProductOrderMapper.update") ? beforeNextOrderUpdate.getAndSet(null) : null;
+            if (injection != null) injection.run();
+            Object result = invocation.proceed();
+            if (injection != null) affectedRows.set((Integer) result);
+            return result;
+        }
+        @Override public Object plugin(Object target) { return Plugin.wrap(target, this); }
+        @Override public void setProperties(Properties properties) { }
     }
 }

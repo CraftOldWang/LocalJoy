@@ -90,6 +90,8 @@ java -Duser.timezone=Asia/Shanghai -jar target/hm-dianping-0.0.1-SNAPSHOT.jar --
 
 ## 6. 验证方法与证据边界
 
+后续专项复测见[支付、超时关单与并发冲突验证](payment-verification-2026-09-16.md)，包含实际线程竞争、独立数据库版本冲突、两阶段补偿失败恢复及签名通知入口验证；本节下方保留首次接入时的验证记录。
+
 使用隔离数据库 `hmdp_resume_test`、Redis DB14，按 `docs/resume-evidence.md` 准备测试依赖后执行：
 
 ```powershell
